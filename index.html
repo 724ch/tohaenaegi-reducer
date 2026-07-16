@@ -1,0 +1,1165 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>토해내기(土.土) · 사진을 그래픽으로 환원</title>
+<style>
+  :root {
+    --bg: #e7f4fc;
+    --panel: #ffffff;
+    --panel-2: #eef7fc;
+    --line: #cfe6f3;
+    --ink: #0d3547;
+    --ink-dim: #3d6b80;
+    --ink-mute: #7aa1b4;
+    --accent: #2bb7ee;
+    --accent-ink: #0e86bd;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: -apple-system, "SF Pro Text", "Pretendard", system-ui, sans-serif; }
+  body { min-height: 100vh; display: flex; flex-direction: column; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 14px; background: var(--accent); }
+  header h1 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: 0.02em; color: #ffffff; }
+  header .sub { font-size: 12px; color: rgba(255,255,255,0.85); }
+  main { display: grid; grid-template-columns: 320px 1fr; flex: 1; min-height: 0; }
+  aside.panel { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 16px; }
+  section.preview { background: #d9ecf5; display: flex; align-items: center; justify-content: center; padding: 24px; overflow: auto; position: relative; }
+  canvas#out { max-width: 100%; max-height: calc(100vh - 100px); background: #fff; box-shadow: 0 8px 40px rgba(0,0,0,0.5); }
+  canvas#out.alpha {
+    background-color: #d9d9d9;
+    background-image:
+      linear-gradient(45deg, #bcbcbc 25%, transparent 25%, transparent 75%, #bcbcbc 75%),
+      linear-gradient(45deg, #bcbcbc 25%, transparent 25%, transparent 75%, #bcbcbc 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 10px 10px;
+  }
+  .group { margin-bottom: 18px; }
+  .group h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-mute); margin: 0 0 8px; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+  .row label { color: var(--ink-dim); flex: 0 0 80px; }
+  .row input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .row .val { flex: 0 0 44px; text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 11px; }
+  .row input[type="color"] { flex: 0 0 44px; height: 28px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); padding: 2px; cursor: pointer; }
+  .row input[type="text"] { flex: 1; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 6px 8px; font-size: 12px; font-family: inherit; }
+  .row select { flex: 1; }
+  button, select { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; font-family: inherit; }
+  button:hover { border-color: var(--ink-mute); }
+  button.primary { background: var(--accent); color: #04121f; border-color: var(--accent); font-weight: 600; }
+  button.primary:hover { filter: brightness(1.05); }
+  .drop { border: 1.5px dashed var(--line); border-radius: var(--radius); padding: 18px; text-align: center; cursor: pointer; transition: 0.15s; color: var(--ink-dim); font-size: 12px; }
+  .drop.over { border-color: var(--accent); background: rgba(43,183,238,0.08); color: var(--ink); }
+  .drop input { display: none; }
+  .mode-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .mode-btn { padding: 8px; text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; cursor: grab; }
+  .mode-btn .t { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .mode-btn .d { font-size: 10px; color: var(--ink-mute); margin-top: 2px; }
+  .mode-btn:hover { border-color: var(--ink-mute); }
+  .mode-btn.active { border-color: rgba(43,183,238,0.5); background: rgba(43,183,238,0.08); }
+  .mode-btn.active .t { color: var(--accent-ink); }
+  .mode-btn.sel { border-color: var(--accent); background: rgba(43,183,238,0.14); box-shadow: inset 0 0 0 1px var(--accent); }
+  .mode-btn:active { cursor: grabbing; }
+  .hint { font-size: 11px; color: var(--ink-mute); margin-top: 4px; line-height: 1.5; }
+  .footer-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .footer-actions button { flex: 1; }
+  .toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; font-size: 12px; color: var(--ink-dim); }
+  .toggle input { accent-color: var(--accent); }
+  .empty-msg { color: var(--ink-mute); font-size: 13px; text-align: center; line-height: 1.8; }
+  /* 체인 리스트 */
+  .chain-list { display: flex; flex-direction: column; gap: 4px; }
+  .chain-item { display: flex; align-items: center; gap: 6px; padding: 7px 8px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-size: 12px; }
+  .chain-item.selected { border-color: var(--accent); background: rgba(43,183,238,0.1); }
+  .chain-item.off { opacity: 0.45; }
+  .chain-item .num { flex: 0 0 16px; color: var(--ink-mute); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .chain-item .name { flex: 1; font-weight: 600; }
+  .chain-item.selected .name { color: var(--accent-ink); }
+  .chain-item .ctrl { display: flex; gap: 2px; }
+  .chain-item .ctrl button { padding: 2px 6px; font-size: 11px; line-height: 1.4; border-radius: 5px; }
+  .chain-item .ctrl button:disabled { opacity: 0.3; cursor: default; }
+  .chain-empty { font-size: 11px; color: var(--ink-mute); padding: 10px 4px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; }
+  .chain-list.drag-over { outline: 1.5px dashed var(--accent); outline-offset: 4px; border-radius: 8px; }
+  .chain-list.drag-over .chain-empty { border-color: var(--accent); color: var(--ink); }
+  .chain-item { cursor: grab; }
+  .chain-item.dragging { opacity: 0.4; cursor: grabbing; }
+  .chain-item.drop-above { box-shadow: 0 -3px 0 0 var(--accent); }
+  .chain-item.drop-below { box-shadow: 0 3px 0 0 var(--accent); }
+  .combo-row { display: flex; flex-wrap: wrap; gap: 4px; }
+  .combo-row button { font-size: 11px; padding: 4px 8px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>토해내기 <span style="font-weight:400;color:rgba(255,255,255,0.72)">土.土</span></h1>
+    <span class="sub">사진을 그래픽으로 환원 · 10가지 효과를 쌓아서</span>
+  </header>
+
+  <main>
+    <aside class="panel">
+      <div class="group">
+        <h2>이미지</h2>
+        <label class="drop" id="drop">
+          <input type="file" id="file" accept="image/*" />
+          <div>드래그 · 클릭 · <b>⌘V 붙여넣기</b></div>
+          <div class="hint" id="filename">PNG · JPG · WebP</div>
+        </label>
+      </div>
+
+      <div class="group">
+        <h2>효과</h2>
+        <div class="mode-grid" id="modeGrid"></div>
+        <div class="hint" style="margin-top:6px">클릭 = 선택한 단계 바꾸기 · 체인으로 <b>드래그</b> = 중첩</div>
+        <div class="hint" style="margin-top:8px">추천 콤보</div>
+        <div class="combo-row" id="combos"></div>
+      </div>
+
+      <div class="group">
+        <h2>체인</h2>
+        <div class="chain-list" id="chainList"></div>
+      </div>
+
+      <div class="group">
+        <h2 id="paramTitle">설정</h2>
+        <div id="params"></div>
+      </div>
+
+      <div class="group">
+        <h2>출력</h2>
+        <div class="row">
+          <label>최대 크기</label>
+          <select id="maxw">
+            <option value="900">900px (빠름)</option>
+            <option value="1400" selected>1400px</option>
+            <option value="2000">2000px</option>
+            <option value="99999">원본 크기</option>
+          </select>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label class="toggle"><input type="checkbox" id="alpha" /> 종이 투명</label>
+        </div>
+        <div id="alphaOpts" hidden>
+          <div class="row">
+            <label>종이색</label>
+            <input type="color" id="alphaColor" value="#f4efe4" />
+            <button id="alphaPick" title="현재 종이색 자동 지정" style="flex:0 0 auto;padding:6px 8px">자동</button>
+          </div>
+          <div class="row">
+            <label>허용 오차</label>
+            <input type="range" id="alphaTol" min="0" max="120" step="2" value="24" />
+            <span class="val" id="alphaTolVal">24</span>
+          </div>
+          <div class="hint">종이색과 가까운 픽셀을 투명으로 → 잉크만 남는 리소 에셋</div>
+        </div>
+        <div class="footer-actions">
+          <button id="holdOrig">원본 보기 (꾹)</button>
+          <button class="primary" id="save">PNG 저장</button>
+        </div>
+        <div class="footer-actions">
+          <button class="primary" id="savePdf" style="flex:1">PDF 내보내기</button>
+        </div>
+        <div class="hint" id="pdfHint" style="margin-top:6px">PDF · 현재 화면을 <b>한 장짜리 인쇄용 PDF</b>로. 투명 영역은 흰 종이로 깔리고 150dpi로 나갑니다. 표지·출력용.</div>
+      </div>
+    </aside>
+
+    <section class="preview">
+      <div class="empty-msg" id="empty">사진을 올리면 시작합니다<br/>드래그하거나 클립보드에서 ⌘V</div>
+      <canvas id="out" hidden></canvas>
+    </section>
+  </main>
+
+<script>
+const $ = s => document.querySelector(s);
+const out = $('#out');
+const octx = out.getContext('2d');
+let img = null;
+
+/* ---------- 체인 상태 ---------- */
+let chain = [];        // { id, type, params, on }
+let selectedId = null;
+let uid = 0;
+let alphaTouched = false;  // 사용자가 종이색을 직접 골랐는지
+
+const DEFAULTS = {
+  silhouette:{ threshold: 235, precision: 2.5, invert: false, alpha: true,
+               fill: 'halftone', dot: 6, fillColor: '#ffffff',
+               outline: true, line: '#ffffff',
+               orbit: true, text: '토해내기', block: 28, offset: 0, push: 55,
+               blockColor: '#ffffff', textColor: '#0e86bd',
+               bg: '#4cc3f0', transparent: false },
+  posterize: { levels: 4, blur: 2, sat: 140 },
+  threshold: { cut: 128, ink: '#111111', paper: '#f4efe4', invert: false },
+  mosaic:    { tile: 18, shape: 'square', gap: 0.12, bg: '#0f0f10' },
+  grain:     { grain: 0.55, levels: 3, ink: '#2b3a8f', paper: '#f4efe4' },
+  scanline:  { spacing: 8, contrast: 1.0, dir: 'h', ink: '#111111', paper: '#f4efe4' },
+  halftone:  { cell: 8, angle: 45, shape: 'circle', ink: '#111111', paper: '#f4efe4', invert: false },
+  typo:      { text: '토해내기', size: 120, lineGap: 0.95, repeat: true, bg: '#0f0f10' },
+  duotone:   { colorA: '#1a2cc7', colorB: '#ff5a36', dx: 8, dy: 5 },
+  glitch:    { slices: 14, shift: 60, rgb: 6 },
+};
+
+const MODES = {
+  silhouette: { label: '실루엣', desc: '윤곽 + 내부 + 글자 궤도', controls: [
+    { k: 'threshold', type: 'range',  label: '배경 제거', min: 1, max: 255, step: 1 },
+    { k: 'precision', type: 'range',  label: '윤곽 정밀도', min: 0.2, max: 12, step: 0.1 },
+    { k: 'invert',    type: 'toggle', label: '명암 반전' },
+    { k: 'alpha',     type: 'toggle', label: '투명 인식' },
+    { k: 'fill',      type: 'select', label: '내부', options: [['halftone','망점'],['original','원본'],['grayscale','흑백'],['solid','단색'],['none','비움']] },
+    { k: 'dot',       type: 'range',  label: '망점 밀도', min: 3, max: 16, step: 1 },
+    { k: 'fillColor', type: 'color',  label: '내부 색' },
+    { k: 'outline',   type: 'toggle', label: '윤곽선' },
+    { k: 'line',      type: 'color',  label: '윤곽 색' },
+    { k: 'orbit',     type: 'toggle', label: '글자 궤도' },
+    { k: 'text',      type: 'text',   label: '궤도 글자' },
+    { k: 'block',     type: 'range',  label: '블럭 크기', min: 10, max: 60, step: 1 },
+    { k: 'offset',    type: 'range',  label: '궤도 시작', min: -100, max: 100, step: 1 },
+    { k: 'push',      type: 'range',  label: '바깥 밀기', min: 0, max: 100, step: 1 },
+    { k: 'blockColor',type: 'color',  label: '블럭 색' },
+    { k: 'textColor', type: 'color',  label: '글자 색' },
+    { k: 'bg',        type: 'color',  label: '바깥 배경' },
+    { k: 'transparent',type: 'toggle',label: '바깥 투명' },
+  ]},
+  posterize: { label: '포스터화', desc: '색 단계 줄이기', controls: [
+    { k: 'levels', type: 'range', label: '색 단계', min: 2, max: 8, step: 1 },
+    { k: 'blur',   type: 'range', label: '부드럽게', min: 0, max: 8, step: 0.5 },
+    { k: 'sat',    type: 'range', label: '채도', min: 0, max: 250, step: 5 },
+  ]},
+  threshold: { label: '스텐실', desc: '흑백 한계값 판화', controls: [
+    { k: 'cut',    type: 'range', label: '한계값', min: 10, max: 245, step: 1 },
+    { k: 'ink',    type: 'color', label: '잉크' },
+    { k: 'paper',  type: 'color', label: '종이' },
+    { k: 'invert', type: 'toggle', label: '반전' },
+  ]},
+  mosaic: { label: '모자이크', desc: '벡터 픽셀 그리드', controls: [
+    { k: 'tile',  type: 'range', label: '타일 크기', min: 6, max: 64, step: 1 },
+    { k: 'shape', type: 'select', label: '모양', options: [['square','네모'],['circle','동그라미'],['diamond','마름모']] },
+    { k: 'gap',   type: 'range', label: '간격', min: 0, max: 0.5, step: 0.02 },
+    { k: 'bg',    type: 'color', label: '배경' },
+  ]},
+  grain: { label: '그레인', desc: '리소그라프 입자', controls: [
+    { k: 'grain',  type: 'range', label: '입자', min: 0, max: 1.2, step: 0.05 },
+    { k: 'levels', type: 'range', label: '톤 단계', min: 2, max: 5, step: 1 },
+    { k: 'ink',    type: 'color', label: '잉크' },
+    { k: 'paper',  type: 'color', label: '종이' },
+  ]},
+  scanline: { label: '스캔라인', desc: '굵기 변조 라인', controls: [
+    { k: 'spacing',  type: 'range', label: '선 간격', min: 4, max: 24, step: 1 },
+    { k: 'contrast', type: 'range', label: '대비', min: 0.5, max: 2, step: 0.05 },
+    { k: 'dir',      type: 'select', label: '방향', options: [['h','가로'],['v','세로']] },
+    { k: 'ink',      type: 'color', label: '잉크' },
+    { k: 'paper',    type: 'color', label: '종이' },
+  ]},
+  halftone: { label: '하프톤', desc: '망점 스크린', controls: [
+    { k: 'cell',   type: 'range',  label: '망점 간격', min: 3, max: 40, step: 1 },
+    { k: 'angle',  type: 'range',  label: '스크린 각', min: 0, max: 90, step: 1 },
+    { k: 'shape',  type: 'select', label: '점 모양', options: [['circle','원'],['square','네모']] },
+    { k: 'ink',    type: 'color',  label: '잉크' },
+    { k: 'paper',  type: 'color',  label: '종이' },
+    { k: 'invert', type: 'toggle', label: '반전' },
+  ]},
+  typo: { label: '타이포 마스크', desc: '글자 안에 사진', controls: [
+    { k: 'text',    type: 'text',  label: '텍스트' },
+    { k: 'size',    type: 'range', label: '글자 크기', min: 30, max: 400, step: 5 },
+    { k: 'lineGap', type: 'range', label: '행간', min: 0.6, max: 1.6, step: 0.05 },
+    { k: 'repeat',  type: 'toggle', label: '반복 채우기' },
+    { k: 'bg',      type: 'color', label: '배경' },
+  ]},
+  duotone: { label: '듀오톤', desc: '2도 인쇄 + 핀 어긋남', controls: [
+    { k: 'colorA', type: 'color', label: '잉크 1' },
+    { k: 'colorB', type: 'color', label: '잉크 2' },
+    { k: 'dx',     type: 'range', label: '어긋남 X', min: -40, max: 40, step: 1 },
+    { k: 'dy',     type: 'range', label: '어긋남 Y', min: -40, max: 40, step: 1 },
+  ]},
+  glitch: { label: '글리치', desc: '슬라이스 + RGB 분리', controls: [
+    { k: 'slices', type: 'range', label: '조각 수', min: 0, max: 40, step: 1 },
+    { k: 'shift',  type: 'range', label: '밀림 폭', min: 0, max: 200, step: 2 },
+    { k: 'rgb',    type: 'range', label: 'RGB 분리', min: 0, max: 30, step: 1 },
+    { type: 'button', label: '다시 굴리기 🎲', action: () => {
+      const st = selectedStep();
+      if (st && st.type === 'glitch') { st.params._seed = rollSeed(); render(); }
+    }},
+  ]},
+};
+
+// 추천 콤보: [라벨, [효과 타입...]]
+const COMBOS = [
+  ['리소 인쇄', ['posterize', 'grain']],
+  ['CRT 화면', ['duotone', 'scanline']],
+  ['깨진 도트', ['mosaic', 'glitch']],
+  ['판화 포스터', ['threshold', 'typo']],
+];
+
+/* ---------- 체인 조작 ---------- */
+function selectedStep() { return chain.find(s => s.id === selectedId) || null; }
+
+function rollSeed() { return Array.from({ length: 120 }, () => Math.random()); }
+
+function addStep(type, skipRender) {
+  const step = { id: ++uid, type, params: structuredClone(DEFAULTS[type]), on: true };
+  if (type === 'glitch') step.params._seed = rollSeed();
+  chain.push(step);
+  selectedId = step.id;
+  if (!skipRender) { buildChain(); buildParams(); render(); }
+  return step;
+}
+
+// 클릭 = 선택된 단계의 효과를 바꿈 (체인은 유지)
+// 체인이 비어 있으면 첫 단계로 추가 → 단일 효과 모드처럼 동작
+function clickEffect(type) {
+  const st = selectedStep();
+  if (!st) { addStep(type); return; }
+  if (st.type === type) return;
+  st.type = type;
+  st.params = structuredClone(DEFAULTS[type]);
+  if (type === 'glitch') st.params._seed = rollSeed();
+  buildChain(); buildParams(); render();
+}
+
+// 특정 위치에 끼워 넣기 (체인 안 드롭용)
+function insertStep(type, idx) {
+  const step = { id: ++uid, type, params: structuredClone(DEFAULTS[type]), on: true };
+  if (type === 'glitch') step.params._seed = rollSeed();
+  chain.splice(idx, 0, step);
+  selectedId = step.id;
+  buildChain(); buildParams(); render();
+}
+
+// 체인 내 이동: fromIdx의 스텝을 targetIdx 자리로
+function reorderStep(fromIdx, targetIdx) {
+  if (fromIdx < 0 || fromIdx === targetIdx || fromIdx === targetIdx - 1) return;
+  const [moved] = chain.splice(fromIdx, 1);
+  if (fromIdx < targetIdx) targetIdx--;
+  chain.splice(targetIdx, 0, moved);
+  buildChain(); render();
+}
+
+function removeStep(id) {
+  chain = chain.filter(s => s.id !== id);
+  if (selectedId === id) selectedId = chain.length ? chain[chain.length - 1].id : null;
+  buildChain(); buildParams(); render();
+}
+
+function moveStep(id, dir) {
+  const i = chain.findIndex(s => s.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= chain.length) return;
+  [chain[i], chain[j]] = [chain[j], chain[i]];
+  buildChain(); render();
+}
+
+function applyCombo(types) {
+  chain = [];
+  types.forEach(t => addStep(t, true));
+  buildChain(); buildParams(); render();
+}
+
+/* ---------- 랜덤(우연성) ---------- */
+const RAND_PALETTE = ['#0e86bd','#2bb7ee','#4cc3f0','#bfe6f3','#04121f','#16333f','#ffffff','#f4efe4',
+  '#ff5a36','#1a2cc7','#f5d76b','#e64980','#2f9e44','#111111'];
+const RAND_WORDS = ['토해내기','土','土.土','TODOT','흙','점','DOT','토닷토'];
+const rint = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+const rpick = arr => arr[Math.floor(Math.random() * arr.length)];
+
+function randParams(type) {
+  const p = structuredClone(DEFAULTS[type]);
+  for (const c of MODES[type].controls) {
+    if (c.type === 'range') { const n = Math.round((c.max - c.min) / c.step); p[c.k] = +(c.min + rint(0, n) * c.step).toFixed(4); }
+    else if (c.type === 'select') { p[c.k] = rpick(c.options)[0]; }
+    else if (c.type === 'toggle') { p[c.k] = Math.random() < 0.5; }
+    else if (c.type === 'color') { p[c.k] = rpick(RAND_PALETTE); }
+    else if (c.type === 'text') { p[c.k] = rpick(RAND_WORDS); }
+  }
+  // 잉크=종이 / 두 잉크 같음 → 빈 화면 방지
+  if (p.ink && p.paper && p.ink === p.paper) p.paper = '#ffffff';
+  if (p.colorA && p.colorB && p.colorA === p.colorB) p.colorB = '#ff5a36';
+  if (type === 'glitch') p._seed = rollSeed();
+  return p;
+}
+
+function randomChain() {
+  const keys = Object.keys(MODES);
+  const count = rint(1, 3);
+  const pool = keys.slice(), pick = [];
+  for (let i = 0; i < count && pool.length; i++) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  chain = pick.map(type => ({ id: ++uid, type, params: randParams(type), on: true }));
+  selectedId = chain.length ? chain[chain.length - 1].id : null;
+  buildChain(); buildParams(); render();
+}
+
+/* ---------- UI 빌드 ---------- */
+function buildModeGrid() {
+  const grid = $('#modeGrid');
+  grid.innerHTML = '';
+  for (const [key, m] of Object.entries(MODES)) {
+    const b = document.createElement('button');
+    b.className = 'mode-btn';
+    b.dataset.type = key;
+    b.draggable = true;
+    b.innerHTML = `<div class="t">${m.label}</div><div class="d">${m.desc}</div>`;
+    b.onclick = () => clickEffect(key);
+    b.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/effect', key);
+      e.dataTransfer.effectAllowed = 'copy';
+    });
+    grid.appendChild(b);
+  }
+  const combos = $('#combos');
+  combos.innerHTML = '';
+  const rnd = document.createElement('button');
+  rnd.textContent = '🎲 랜덤';
+  rnd.title = '효과를 무작위로 쌓아 우연의 그래픽';
+  rnd.style.borderColor = 'var(--accent)';
+  rnd.style.color = 'var(--accent-ink)';
+  rnd.style.fontWeight = '700';
+  rnd.onclick = randomChain;
+  combos.appendChild(rnd);
+  for (const [label, types] of COMBOS) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.title = types.map(t => MODES[t].label).join(' → ');
+    b.onclick = () => applyCombo(types);
+    combos.appendChild(b);
+  }
+}
+
+function updateModeActive() {
+  const inChain = new Set(chain.map(s => s.type));
+  const selType = selectedStep()?.type;
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', inChain.has(b.dataset.type));
+    b.classList.toggle('sel', b.dataset.type === selType);
+  });
+}
+
+function buildChain() {
+  const list = $('#chainList');
+  list.innerHTML = '';
+  updateModeActive();
+  if (!chain.length) {
+    list.innerHTML = '<div class="chain-empty">효과를 클릭하면 여기 단일 적용<br/>드래그해서 놓으면 중첩</div>';
+    return;
+  }
+  chain.forEach((step, i) => {
+    const item = document.createElement('div');
+    item.className = 'chain-item' + (step.id === selectedId ? ' selected' : '') + (step.on ? '' : ' off');
+    item.innerHTML = `
+      <span class="num">${i + 1}</span>
+      <span class="name">${MODES[step.type].label}</span>
+      <span class="ctrl">
+        <button data-act="toggle" title="켜기/끄기">${step.on ? '👁' : '–'}</button>
+        <button data-act="up" title="위로" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button data-act="down" title="아래로" ${i === chain.length - 1 ? 'disabled' : ''}>↓</button>
+        <button data-act="del" title="삭제">×</button>
+      </span>`;
+    item.onclick = e => {
+      const act = e.target.dataset?.act;
+      if (act === 'toggle') { step.on = !step.on; buildChain(); render(); }
+      else if (act === 'up') moveStep(step.id, -1);
+      else if (act === 'down') moveStep(step.id, 1);
+      else if (act === 'del') removeStep(step.id);
+      else { selectedId = step.id; buildChain(); buildParams(); }
+    };
+    // 체인 내 드래그 재정렬 + 효과 버튼을 사이에 끼워 넣기
+    item.draggable = true;
+    item.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/chain', String(step.id));
+      e.dataTransfer.effectAllowed = 'move';
+      item.classList.add('dragging');
+    });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      clearDropMarks();
+    });
+    item.addEventListener('dragover', e => {
+      const types = [...e.dataTransfer.types];
+      if (!types.includes('text/chain') && !types.includes('text/effect')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const r = item.getBoundingClientRect();
+      const before = e.clientY < r.top + r.height / 2;
+      item.classList.toggle('drop-above', before);
+      item.classList.toggle('drop-below', !before);
+    });
+    item.addEventListener('dragleave', () => item.classList.remove('drop-above', 'drop-below'));
+    item.addEventListener('drop', e => {
+      const before = item.classList.contains('drop-above');
+      clearDropMarks();
+      const chainId = e.dataTransfer.getData('text/chain');
+      const effType = e.dataTransfer.getData('text/effect');
+      if (!chainId && !effType) return;
+      e.preventDefault();
+      e.stopPropagation();
+      let targetIdx = chain.findIndex(s => s.id === step.id);
+      if (!before) targetIdx++;
+      if (chainId) reorderStep(chain.findIndex(s => s.id === +chainId), targetIdx);
+      else if (MODES[effType]) insertStep(effType, targetIdx);
+    });
+    list.appendChild(item);
+  });
+}
+
+function buildParams() {
+  const box = $('#params');
+  box.innerHTML = '';
+  const step = selectedStep();
+  if (!step) {
+    $('#paramTitle').textContent = '설정';
+    box.innerHTML = '<div class="hint">체인에서 단계를 선택하면 여기서 조정합니다</div>';
+    return;
+  }
+  $('#paramTitle').textContent = MODES[step.type].label + ' 설정';
+  const st = step.params;
+  for (const c of MODES[step.type].controls) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    if (c.type === 'range') {
+      row.innerHTML = `<label>${c.label}</label><input type="range" min="${c.min}" max="${c.max}" step="${c.step}" value="${st[c.k]}"/><span class="val">${st[c.k]}</span>`;
+      const inp = row.querySelector('input');
+      inp.oninput = () => { st[c.k] = +inp.value; row.querySelector('.val').textContent = inp.value; render(); };
+    } else if (c.type === 'color') {
+      row.innerHTML = `<label>${c.label}</label><input type="color" value="${st[c.k]}"/>`;
+      const inp = row.querySelector('input');
+      inp.oninput = () => { st[c.k] = inp.value; render(); };
+    } else if (c.type === 'select') {
+      row.innerHTML = `<label>${c.label}</label><select>${c.options.map(([v, l]) => `<option value="${v}" ${st[c.k] === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+      const sel = row.querySelector('select');
+      sel.onchange = () => { st[c.k] = sel.value; render(); };
+    } else if (c.type === 'text') {
+      row.innerHTML = `<label>${c.label}</label><input type="text" value="${st[c.k]}"/>`;
+      const inp = row.querySelector('input');
+      inp.oninput = () => { st[c.k] = inp.value; render(); };
+    } else if (c.type === 'toggle') {
+      row.innerHTML = `<label class="toggle"><input type="checkbox" ${st[c.k] ? 'checked' : ''}/> ${c.label}</label>`;
+      const inp = row.querySelector('input');
+      inp.onchange = () => { st[c.k] = inp.checked; render(); };
+    } else if (c.type === 'button') {
+      row.innerHTML = `<button style="flex:1">${c.label}</button>`;
+      row.querySelector('button').onclick = c.action;
+    }
+    box.appendChild(row);
+  }
+}
+
+/* ---------- 헬퍼 ---------- */
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function hex2rgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+// 픽셀 좌표 기반 결정적 난수 (슬라이더 움직여도 입자가 안 흔들리게)
+function hash(x, y) {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = (h ^ (h >> 13)) * 1274126177 | 0;
+  return ((h ^ (h >> 16)) >>> 0) / 4294967296;
+}
+
+/* ---------- 실루엣 헬퍼 (silhouette-text-tool 이식) ---------- */
+let lastSil = null;   // 마지막 실루엣 렌더 결과 (SVG 벡터 내보내기용)
+
+function silLargestComponent(mask, W, H) {
+  const label = new Int32Array(W * H); let cur = 0, best = 0, bestSize = 0;
+  const stack = [];
+  for (let i = 0; i < W * H; i++) {
+    if (mask[i] && !label[i]) {
+      cur++; let size = 0; stack.length = 0; stack.push(i); label[i] = cur;
+      while (stack.length) {
+        const pp = stack.pop(); size++;
+        const x = pp % W, y = (pp / W) | 0;
+        if (x + 1 < W) { const n = pp + 1; if (mask[n] && !label[n]) { label[n] = cur; stack.push(n); } }
+        if (x - 1 >= 0) { const n = pp - 1; if (mask[n] && !label[n]) { label[n] = cur; stack.push(n); } }
+        if (y + 1 < H) { const n = pp + W; if (mask[n] && !label[n]) { label[n] = cur; stack.push(n); } }
+        if (y - 1 >= 0) { const n = pp - W; if (mask[n] && !label[n]) { label[n] = cur; stack.push(n); } }
+      }
+      if (size > bestSize) { bestSize = size; best = cur; }
+    }
+  }
+  const o = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) o[i] = label[i] === best ? 1 : 0;
+  return o;
+}
+
+function silMooreTrace(m, W, H) {
+  const get = (x, y) => (x >= 0 && y >= 0 && x < W && y < H) ? m[y * W + x] : 0;
+  let sx = -1, sy = -1;
+  for (let y = 0; y < H && sy < 0; y++) for (let x = 0; x < W; x++) if (m[y * W + x]) { sx = x; sy = y; break; }
+  if (sx < 0) return [];
+  const off = [[-1, 0], [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1]];
+  const contour = []; let px = sx, py = sy, b = 0; const fx = sx, fy = sy; let count = 0;
+  do {
+    contour.push([px, py]);
+    let found = false;
+    for (let k = 0; k < 8; k++) {
+      const idx = (b + 1 + k) % 8, nx = px + off[idx][0], ny = py + off[idx][1];
+      if (get(nx, ny)) { b = (idx + 4) % 8; px = nx; py = ny; found = true; break; }
+    }
+    if (!found) break;
+    count++;
+  } while ((px !== fx || py !== fy) && count < W * H * 4);
+  return contour;
+}
+
+function silPerpDist(p, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const L = Math.hypot(dx, dy) || 1e-6;
+  return Math.abs((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / L;
+}
+function silSimplify(pts, eps) {
+  if (pts.length < 4) return pts.slice();
+  const keep = new Array(pts.length).fill(false);
+  keep[0] = keep[pts.length - 1] = true;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [s, e] = stack.pop();
+    let maxD = 0, idx = -1;
+    for (let i = s + 1; i < e; i++) { const d = silPerpDist(pts[i], pts[s], pts[e]); if (d > maxD) { maxD = d; idx = i; } }
+    if (maxD > eps && idx > 0) { keep[idx] = true; stack.push([s, idx]); stack.push([idx, e]); }
+  }
+  return pts.filter((_, i) => keep[i]);
+}
+function silResample(pts, spacing) {
+  if (pts.length < 2) return pts.slice();
+  const o = [pts[0]]; let prev = pts[0], acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    let cur = pts[i], seg = Math.hypot(cur[0] - prev[0], cur[1] - prev[1]);
+    while (acc + seg >= spacing && seg > 1e-6) {
+      const t = (spacing - acc) / seg;
+      const nx = prev[0] + (cur[0] - prev[0]) * t, ny = prev[1] + (cur[1] - prev[1]) * t;
+      o.push([nx, ny]); prev = [nx, ny];
+      seg = Math.hypot(cur[0] - prev[0], cur[1] - prev[1]); acc = 0;
+    }
+    acc += seg; prev = cur;
+  }
+  return o;
+}
+
+// 윤곽(disp 좌표)을 따라 도는 글자 블럭 배치
+function silComputeBlocks(dispContour, p) {
+  const chars = [...(p.text || '').replace(/\s+/g, '')];
+  if (!chars.length || dispContour.length < 2) return [];
+  let cxs = 0, cys = 0;
+  for (const q of dispContour) { cxs += q[0]; cys += q[1]; }
+  cxs /= dispContour.length; cys /= dispContour.length;
+  const samples = silResample(dispContour, p.block);
+  if (samples.length < 2) return [];
+  let start = Math.round(p.offset / 100 * samples.length);
+  start = ((start % samples.length) + samples.length) % samples.length;
+  const pushAmt = p.block * (p.push / 100);
+  const cells = []; let lastKey = null;
+  for (let k = 0; k < samples.length; k++) {
+    const idx = (start + k) % samples.length;
+    const q = samples[idx], qn = samples[(idx + 1) % samples.length], qp = samples[(idx - 1 + samples.length) % samples.length];
+    let tx = qn[0] - qp[0], ty = qn[1] - qp[1]; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+    let nx = -ty, ny = tx;
+    if ((q[0] - cxs) * nx + (q[1] - cys) * ny < 0) { nx = -nx; ny = -ny; }
+    const ox = q[0] + nx * pushAmt, oy = q[1] + ny * pushAmt;
+    const gx = Math.round(ox / p.block), gy = Math.round(oy / p.block);
+    const key = gx + ',' + gy;
+    if (key === lastKey) continue;
+    lastKey = key;
+    cells.push({ cx: gx * p.block, cy: gy * p.block });
+  }
+  for (let i = 0; i < cells.length; i++) { cells[i].char = chars[i % chars.length]; cells[i].size = p.block; }
+  return cells;
+}
+
+/* ---------- 효과 구현 (src 캔버스 → ctx에 그리기) ---------- */
+const EFFECTS = {
+  silhouette(src, p, ctx) {
+    const { width: W, height: H } = src;
+    lastSil = null;
+    // 1) 축소 해상도로 마스크 만들기
+    const maxDim = 520;
+    const ms = Math.min(1, maxDim / Math.max(W, H));
+    const mW = Math.max(1, Math.round(W * ms)), mH = Math.max(1, Math.round(H * ms));
+    const mc = mk(mW, mH), mcx = mc.getContext('2d', { willReadFrequently: true });
+    mcx.drawImage(src, 0, 0, mW, mH);
+    const md = mcx.getImageData(0, 0, mW, mH).data;
+    const mask = new Uint8Array(mW * mH);
+    for (let i = 0; i < mW * mH; i++) {
+      const r = md[i * 4], g = md[i * 4 + 1], b = md[i * 4 + 2], a = md[i * 4 + 3];
+      let solid;
+      if (p.alpha && a < 250) solid = a > 128;
+      else { const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b; solid = lum < p.threshold; }
+      if (p.invert) solid = !solid;
+      mask[i] = solid ? 1 : 0;
+    }
+    const big = silLargestComponent(mask, mW, mH);
+    const raw = silMooreTrace(big, mW, mH);
+    // 2) 바깥 배경
+    if (!p.transparent) { ctx.fillStyle = p.bg; ctx.fillRect(0, 0, W, H); }
+    if (!raw.length) return;   // 형태 못 찾음 → 임계값/반전 조절
+    // 3) 윤곽을 표시 좌표로 옮기고 단순화
+    const dsx = W / mW, dsy = H / mH;
+    const disp = raw.map(pt => [pt[0] * dsx, pt[1] * dsy]);
+    const poly = silSimplify(disp, p.precision);
+    if (poly.length < 3) return;
+    // 4) 내부 채움 (윤곽 안쪽만, 바깥은 투명 레이어)
+    const inside = mk(W, H), ic = inside.getContext('2d', { willReadFrequently: true });
+    if (p.fill !== 'none') {
+      ic.save();
+      ic.beginPath(); ic.moveTo(poly[0][0], poly[0][1]);
+      for (let i = 1; i < poly.length; i++) ic.lineTo(poly[i][0], poly[i][1]);
+      ic.closePath(); ic.clip();
+      if (p.fill === 'solid') { ic.fillStyle = p.fillColor; ic.fillRect(0, 0, W, H); }
+      else if (p.fill === 'original') { ic.drawImage(src, 0, 0, W, H); }
+      else if (p.fill === 'grayscale') {
+        ic.drawImage(src, 0, 0, W, H);
+        const id = ic.getImageData(0, 0, W, H), d = id.data;
+        for (let i = 0; i < d.length; i += 4) { const v = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]; d[i] = d[i + 1] = d[i + 2] = v; }
+        ic.putImageData(id, 0, 0);
+      } else if (p.fill === 'halftone') {
+        const hc = p.dot; ic.fillStyle = p.fillColor;
+        for (let y = 0; y < H; y += hc) {
+          for (let x = 0; x < W; x += hc) {
+            const mx = (x / W * mW) | 0, my = (y / H * mH) | 0, i = (my * mW + mx) * 4;
+            const lum = (0.2126 * md[i] + 0.7152 * md[i + 1] + 0.0722 * md[i + 2]) / 255;
+            const rr = (1 - lum) * hc * 0.62;
+            if (rr > 0.35) { ic.beginPath(); ic.arc(x + hc / 2, y + hc / 2, rr, 0, Math.PI * 2); ic.fill(); }
+          }
+        }
+      }
+      ic.restore();
+      ctx.drawImage(inside, 0, 0);
+    }
+    // 5) 윤곽선
+    if (p.outline) {
+      ctx.beginPath(); ctx.moveTo(poly[0][0], poly[0][1]);
+      for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i][0], poly[i][1]);
+      ctx.closePath();
+      ctx.lineWidth = Math.max(1.5, p.block * 0.07); ctx.strokeStyle = p.line; ctx.lineJoin = 'round'; ctx.stroke();
+    }
+    // 6) 글자 궤도 블럭
+    let blocks = [];
+    if (p.orbit) {
+      blocks = silComputeBlocks(disp, p);
+      for (const bl of blocks) {
+        const s = bl.size, x = bl.cx - s / 2, y = bl.cy - s / 2;
+        ctx.fillStyle = p.blockColor; ctx.fillRect(x, y, s, s);
+        ctx.fillStyle = p.textColor;
+        ctx.font = `700 ${Math.round(s * 0.62)}px 'Pretendard', system-ui, sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(bl.char, bl.cx, bl.cy + s * 0.02);
+      }
+      ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+    }
+    lastSil = { poly, blocks, inside, params: { ...p }, W, H };
+  },
+
+  posterize(src, p, ctx) {
+    const { width: W, height: H } = src;
+    const t = mk(W, H).getContext('2d');
+    t.filter = `blur(${p.blur}px) saturate(${p.sat}%)`;
+    t.drawImage(src, 0, 0);
+    const id = t.getImageData(0, 0, W, H), d = id.data;
+    const q = 255 / (p.levels - 1);
+    for (let i = 0; i < d.length; i += 4) {
+      d[i]     = Math.round(d[i] / q) * q;
+      d[i + 1] = Math.round(d[i + 1] / q) * q;
+      d[i + 2] = Math.round(d[i + 2] / q) * q;
+    }
+    ctx.putImageData(id, 0, 0);
+  },
+
+  threshold(src, p, ctx) {
+    const { width: W, height: H } = src;
+    const id = src.getContext('2d').getImageData(0, 0, W, H), d = id.data;
+    const ink = hex2rgb(p.ink), paper = hex2rgb(p.paper);
+    for (let i = 0; i < d.length; i += 4) {
+      const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      let dark = lum < p.cut;
+      if (p.invert) dark = !dark;
+      const c = dark ? ink : paper;
+      d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
+    }
+    ctx.putImageData(id, 0, 0);
+  },
+
+  mosaic(src, p, ctx) {
+    const { width: W, height: H } = src;
+    const cols = Math.ceil(W / p.tile), rows = Math.ceil(H / p.tile);
+    const small = mk(cols, rows);
+    small.getContext('2d').drawImage(src, 0, 0, cols, rows);
+    const d = small.getContext('2d').getImageData(0, 0, cols, rows).data;
+    ctx.fillStyle = p.bg;
+    ctx.fillRect(0, 0, W, H);
+    const s = p.tile * (1 - p.gap);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const i = (r * cols + c) * 4;
+        ctx.fillStyle = `rgb(${d[i]},${d[i + 1]},${d[i + 2]})`;
+        const cx = c * p.tile + p.tile / 2, cy = r * p.tile + p.tile / 2;
+        if (p.shape === 'square') {
+          ctx.fillRect(cx - s / 2, cy - s / 2, s, s);
+        } else if (p.shape === 'circle') {
+          ctx.beginPath(); ctx.arc(cx, cy, s / 2, 0, Math.PI * 2); ctx.fill();
+        } else { // diamond
+          ctx.beginPath();
+          ctx.moveTo(cx, cy - s / 2); ctx.lineTo(cx + s / 2, cy);
+          ctx.lineTo(cx, cy + s / 2); ctx.lineTo(cx - s / 2, cy);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+    }
+  },
+
+  grain(src, p, ctx) {
+    const { width: W, height: H } = src;
+    const id = src.getContext('2d').getImageData(0, 0, W, H), d = id.data;
+    const ink = hex2rgb(p.ink), paper = hex2rgb(p.paper);
+    const n = p.levels - 1;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4;
+        let lum = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
+        lum += (hash(x, y) - 0.5) * p.grain;
+        const q = Math.max(0, Math.min(1, Math.round(lum * n) / n));
+        d[i]     = lerp(ink[0], paper[0], q);
+        d[i + 1] = lerp(ink[1], paper[1], q);
+        d[i + 2] = lerp(ink[2], paper[2], q);
+        d[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(id, 0, 0);
+  },
+
+  scanline(src, p, ctx) {
+    const { width: W, height: H } = src;
+    const sd = src.getContext('2d').getImageData(0, 0, W, H).data;
+    const id = ctx.createImageData(W, H), d = id.data;
+    const ink = hex2rgb(p.ink), paper = hex2rgb(p.paper);
+    const sp = p.spacing;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        // 밴드 중심에서 휘도 샘플 → 선 굵기 변조
+        const band = p.dir === 'h' ? y : x;
+        const center = Math.floor(band / sp) * sp + sp / 2;
+        const sx = p.dir === 'h' ? x : Math.min(W - 1, Math.max(0, Math.round(center)));
+        const sy = p.dir === 'h' ? Math.min(H - 1, Math.max(0, Math.round(center))) : y;
+        const si = (sy * W + sx) * 4;
+        const lum = (0.299 * sd[si] + 0.587 * sd[si + 1] + 0.114 * sd[si + 2]) / 255;
+        const th = Math.min(sp, (1 - lum) * sp * p.contrast);
+        const isInk = Math.abs(band - center) < th / 2;
+        const c = isInk ? ink : paper;
+        const i = (y * W + x) * 4;
+        d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(id, 0, 0);
+  },
+
+  halftone(src, p, ctx) {
+    const { width: W, height: H } = src;
+    const sd = src.getContext('2d').getImageData(0, 0, W, H).data;
+    const ink = hex2rgb(p.ink), paper = hex2rgb(p.paper);
+    ctx.fillStyle = `rgb(${paper[0]},${paper[1]},${paper[2]})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = `rgb(${ink[0]},${ink[1]},${ink[2]})`;
+    const cell = p.cell;
+    const ang = p.angle * Math.PI / 180, cos = Math.cos(ang), sin = Math.sin(ang);
+    const cx = W / 2, cy = H / 2;
+    const reach = Math.ceil(Math.hypot(W, H) / cell / 2) + 2;
+    for (let j = -reach; j <= reach; j++) {
+      for (let i = -reach; i <= reach; i++) {
+        const u = i * cell, v = j * cell;
+        const x = cx + u * cos - v * sin, y = cy + u * sin + v * cos;
+        if (x < -cell || x > W + cell || y < -cell || y > H + cell) continue;
+        const sx = Math.min(W - 1, Math.max(0, x | 0)), sy = Math.min(H - 1, Math.max(0, y | 0));
+        const k = (sy * W + sx) * 4;
+        let lum = (0.299 * sd[k] + 0.587 * sd[k + 1] + 0.114 * sd[k + 2]) / 255;
+        if (p.invert) lum = 1 - lum;
+        const r = (1 - lum) * cell * 0.72;
+        if (r <= 0.3) continue;
+        if (p.shape === 'square') { ctx.fillRect(x - r, y - r, r * 2, r * 2); }
+        else { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+      }
+    }
+  },
+
+  typo(src, p, ctx) {
+    const { width: W, height: H } = src;
+    const tmp = mk(W, H), t = tmp.getContext('2d');
+    t.fillStyle = '#000';
+    t.font = `900 ${p.size}px Pretendard, "Apple SD Gothic Neo", -apple-system, sans-serif`;
+    t.textBaseline = 'middle';
+    const text = p.text || 'REDUCE';
+    const tw = t.measureText(text).width;
+    if (p.repeat) {
+      const stepY = p.size * p.lineGap;
+      let rowIdx = 0;
+      for (let y = stepY / 2; y < H + stepY; y += stepY, rowIdx++) {
+        // 벽돌 쌓기처럼 행마다 어긋나게
+        const offsetX = -(rowIdx % 2) * (tw + p.size * 0.3) / 2;
+        for (let x = offsetX; x < W; x += tw + p.size * 0.3) {
+          t.fillText(text, x, y);
+        }
+      }
+    } else {
+      t.textAlign = 'center';
+      t.fillText(text, W / 2, H / 2);
+    }
+    t.globalCompositeOperation = 'source-in';
+    t.drawImage(src, 0, 0);
+    ctx.fillStyle = p.bg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(tmp, 0, 0);
+  },
+
+  duotone(src, p, ctx) {
+    const { width: W, height: H } = src;
+    const sd = src.getContext('2d').getImageData(0, 0, W, H).data;
+    const tint = (color) => {
+      const c = hex2rgb(color);
+      const cv = mk(W, H), cc = cv.getContext('2d');
+      const id = cc.createImageData(W, H), d = id.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const lum = (0.299 * sd[i] + 0.587 * sd[i + 1] + 0.114 * sd[i + 2]) / 255;
+        // 어두운 곳 → 잉크색, 밝은 곳 → 흰색
+        d[i]     = lerp(c[0], 255, lum);
+        d[i + 1] = lerp(c[1], 255, lum);
+        d[i + 2] = lerp(c[2], 255, lum);
+        d[i + 3] = 255;
+      }
+      cc.putImageData(id, 0, 0);
+      return cv;
+    };
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(tint(p.colorA), 0, 0);
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(tint(p.colorB), p.dx, p.dy);
+    ctx.globalCompositeOperation = 'source-over';
+  },
+
+  glitch(src, p, ctx) {
+    const { width: W, height: H } = src;
+    const seed = p._seed || (p._seed = Array.from({ length: 120 }, () => Math.random()));
+    // 1) RGB 채널 분리
+    let base = src;
+    if (p.rgb > 0) {
+      base = mk(W, H);
+      const b = base.getContext('2d');
+      b.fillStyle = '#000';
+      b.fillRect(0, 0, W, H);
+      const channels = [['#ff0000', -p.rgb], ['#00ff00', 0], ['#0000ff', p.rgb]];
+      for (const [color, dx] of channels) {
+        const ch = mk(W, H), cc = ch.getContext('2d');
+        cc.drawImage(src, 0, 0);
+        cc.globalCompositeOperation = 'multiply';
+        cc.fillStyle = color;
+        cc.fillRect(0, 0, W, H);
+        b.globalCompositeOperation = 'lighter';
+        b.drawImage(ch, dx, 0);
+      }
+    }
+    // 2) 슬라이스 밀기
+    ctx.drawImage(base, 0, 0);
+    for (let i = 0; i < p.slices; i++) {
+      const y = Math.floor(seed[i * 3] * H);
+      const h = Math.max(4, Math.floor(seed[i * 3 + 1] * H * 0.08));
+      const dx = Math.round((seed[i * 3 + 2] * 2 - 1) * p.shift);
+      ctx.drawImage(base, 0, y, W, h, dx, y, W, h);
+    }
+  },
+};
+
+/* ---------- 렌더 (체인 파이프라인) ---------- */
+function render() {
+  if (!img) return;
+  const maxW = +$('#maxw').value;
+  const scale = Math.min(1, maxW / Math.max(img.width, img.height));
+  const W = Math.max(1, Math.round(img.width * scale));
+  const H = Math.max(1, Math.round(img.height * scale));
+  let cur = mk(W, H);
+  cur.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, W, H);
+  for (const step of chain) {
+    if (!step.on) continue;
+    const next = mk(W, H);
+    EFFECTS[step.type](cur, step.params, next.getContext('2d', { willReadFrequently: true }));
+    cur = next;
+  }
+  out.width = W; out.height = H;
+  octx.drawImage(cur, 0, 0);
+  if (alphaOn()) {
+    knockout(octx, W, H, alphaColorVal(), alphaTolVal());
+    out.classList.add('alpha');
+  } else {
+    out.classList.remove('alpha');
+  }
+}
+
+/* ---------- 종이 → 투명 (색 녹아웃) ---------- */
+const alphaOn = () => $('#alpha').checked;
+const alphaColorVal = () => $('#alphaColor').value;
+const alphaTolVal = () => +$('#alphaTol').value;
+
+// 체인에서 현재 "종이/배경" 색을 추정 (마지막 켜진 효과부터)
+function detectPaper() {
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const s = chain[i];
+    if (!s.on) continue;
+    if ('paper' in s.params) return s.params.paper;
+    if ('bg' in s.params) return s.params.bg;
+    if (s.type === 'duotone') return '#ffffff';
+  }
+  return '#ffffff';
+}
+
+// 지정색과 가까운 픽셀을 투명으로. 경계는 feather로 부드럽게.
+function knockout(ctx, W, H, color, tol) {
+  const [kr, kg, kb] = hex2rgb(color);
+  const feather = 24;
+  const id = ctx.getImageData(0, 0, W, H), d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const dist = Math.sqrt((d[i] - kr) ** 2 + (d[i + 1] - kg) ** 2 + (d[i + 2] - kb) ** 2);
+    if (dist <= tol) d[i + 3] = 0;
+    else if (dist <= tol + feather) d[i + 3] = Math.round(255 * (dist - tol) / feather);
+  }
+  ctx.putImageData(id, 0, 0);
+}
+
+/* ---------- PDF 내보내기 ---------- */
+// 외부 라이브러리 없이(오프라인·단일 파일 유지): 캔버스를 JPEG로 만들어 한 장짜리 PDF에 임베드
+function strBytes(s) { const b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i) & 0xff; return b; }
+
+function buildPdf(jpg, wpx, hpx, dpi) {
+  const wpt = +(wpx * 72 / dpi).toFixed(2), hpt = +(hpx * 72 / dpi).toFixed(2);
+  const parts = []; const off = []; let pos = 0;
+  const put = x => { const b = (typeof x === 'string') ? strBytes(x) : x; parts.push(b); pos += b.length; };
+  const obj = (n, body) => { off[n] = pos; put(`${n} 0 obj\n`); put(body); put('\nendobj\n'); };
+  put('%PDF-1.3\n%\xff\xff\xff\xff\n');
+  obj(1, '<</Type/Catalog/Pages 2 0 R>>');
+  obj(2, '<</Type/Pages/Kids[3 0 R]/Count 1>>');
+  obj(3, `<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${wpt} ${hpt}]/Resources<</XObject<</Im0 4 0 R>>>>/Contents 5 0 R>>`);
+  off[4] = pos;
+  put(`4 0 obj\n<</Type/XObject/Subtype/Image/Width ${wpx}/Height ${hpx}/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length ${jpg.length}>>\nstream\n`);
+  put(jpg);
+  put('\nendstream\nendobj\n');
+  const content = `q\n${wpt} 0 0 ${hpt} 0 0 cm\n/Im0 Do\nQ\n`;
+  obj(5, `<</Length ${content.length}>>\nstream\n${content}endstream`);
+  const xrefPos = pos;
+  let xref = 'xref\n0 6\n0000000000 65535 f \n';
+  for (let i = 1; i <= 5; i++) xref += String(off[i]).padStart(10, '0') + ' 00000 n \n';
+  put(xref);
+  put(`trailer\n<</Size 6/Root 1 0 R>>\nstartxref\n${xrefPos}\n%%EOF`);
+  let total = 0; for (const p of parts) total += p.length;
+  const buf = new Uint8Array(total); let o = 0; for (const p of parts) { buf.set(p, o); o += p.length; }
+  return buf;
+}
+
+function savePdf() {
+  if (!img) return;
+  const W = out.width, H = out.height;
+  // 투명 영역은 흰 종이로 깔아 인쇄용 JPEG 생성
+  const flat = mk(W, H), fc = flat.getContext('2d');
+  fc.fillStyle = '#ffffff'; fc.fillRect(0, 0, W, H);
+  fc.drawImage(out, 0, 0);
+  const durl = flat.toDataURL('image/jpeg', 0.92);
+  const jpg = strBytes(atob(durl.split(',')[1]));
+  const pdf = buildPdf(jpg, W, H, 150);
+  const name = chain.filter(s => s.on).map(s => s.type).join('-') || 'original';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
+  a.download = `tohaenaegi_${name}.pdf`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* ---------- 이미지 로드 ---------- */
+function loadFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const url = URL.createObjectURL(file);
+  const im = new Image();
+  im.onload = () => {
+    img = im;
+    $('#empty').hidden = true;
+    out.hidden = false;
+    $('#filename').textContent = `${file.name || '클립보드 이미지'} · ${im.width}×${im.height}`;
+    render();
+    URL.revokeObjectURL(url);
+  };
+  im.src = url;
+}
+
+const drop = $('#drop');
+$('#file').onchange = e => loadFile(e.target.files[0]);
+const isFileDrag = e => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+['dragover', 'dragenter'].forEach(ev => document.addEventListener(ev, e => {
+  if (!isFileDrag(e)) return;
+  e.preventDefault(); drop.classList.add('over');
+}));
+['dragleave', 'drop'].forEach(ev => document.addEventListener(ev, e => {
+  if (!isFileDrag(e)) return;
+  e.preventDefault(); drop.classList.remove('over');
+}));
+document.addEventListener('drop', e => { if (isFileDrag(e)) loadFile(e.dataTransfer.files[0]); });
+
+/* ---------- 효과 드래그 → 체인 드롭 · 체인 내 재정렬 ---------- */
+const chainList = $('#chainList');
+function clearDropMarks() {
+  chainList.querySelectorAll('.drop-above, .drop-below').forEach(el => el.classList.remove('drop-above', 'drop-below'));
+  chainList.classList.remove('drag-over');
+}
+chainList.addEventListener('dragover', e => {
+  const types = [...e.dataTransfer.types];
+  if (types.includes('text/effect') || types.includes('text/chain')) {
+    e.preventDefault();
+    chainList.classList.add('drag-over');
+  }
+});
+chainList.addEventListener('dragleave', e => {
+  if (!chainList.contains(e.relatedTarget)) chainList.classList.remove('drag-over');
+});
+// 항목 위가 아닌 빈 영역에 놓으면: 효과는 끝에 추가, 재정렬은 맨 뒤로
+chainList.addEventListener('drop', e => {
+  const effType = e.dataTransfer.getData('text/effect');
+  const chainId = e.dataTransfer.getData('text/chain');
+  clearDropMarks();
+  if (effType && MODES[effType]) { e.preventDefault(); addStep(effType); }
+  else if (chainId) { e.preventDefault(); reorderStep(chain.findIndex(s => s.id === +chainId), chain.length); }
+});
+document.addEventListener('paste', e => {
+  for (const item of e.clipboardData.items) {
+    if (item.type.startsWith('image/')) { loadFile(item.getAsFile()); return; }
+  }
+});
+
+/* ---------- 원본 보기 (꾹 누르기) ---------- */
+const holdBtn = $('#holdOrig');
+function showOrig() { if (img) octx.drawImage(img, 0, 0, out.width, out.height); }
+holdBtn.addEventListener('pointerdown', showOrig);
+holdBtn.addEventListener('pointerup', render);
+holdBtn.addEventListener('pointerleave', render);
+document.addEventListener('keydown', e => { if (e.code === 'Space' && img && e.target.tagName !== 'INPUT') { e.preventDefault(); showOrig(); } });
+document.addEventListener('keyup', e => { if (e.code === 'Space') render(); });
+
+/* ---------- 저장 ---------- */
+$('#save').onclick = () => {
+  if (!img) return;
+  const name = chain.filter(s => s.on).map(s => s.type).join('-') || 'original';
+  out.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `tohaenaegi_${name}.png`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, 'image/png');
+};
+
+$('#savePdf').onclick = savePdf;
+
+/* ---------- 종이 투명 컨트롤 ---------- */
+$('#alpha').onchange = () => {
+  const on = $('#alpha').checked;
+  $('#alphaOpts').hidden = !on;
+  if (on && !alphaTouched) $('#alphaColor').value = detectPaper();
+  render();
+};
+$('#alphaColor').oninput = () => { alphaTouched = true; render(); };
+$('#alphaPick').onclick = () => { $('#alphaColor').value = detectPaper(); alphaTouched = true; render(); };
+$('#alphaTol').oninput = () => { $('#alphaTolVal').textContent = $('#alphaTol').value; render(); };
+
+$('#maxw').onchange = render;
+
+buildModeGrid();
+buildChain();
+buildParams();
+</script>
+</body>
+</html>
