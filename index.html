@@ -26,7 +26,9 @@
   main { display: grid; grid-template-columns: 320px 1fr; flex: 1; min-height: 0; }
   aside.panel { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 16px; }
   section.preview { background: #d9ecf5; display: flex; align-items: center; justify-content: center; padding: 24px; overflow: auto; position: relative; }
-  canvas#out { max-width: 100%; max-height: calc(100vh - 100px); background: #fff; box-shadow: 0 8px 40px rgba(0,0,0,0.5); }
+  .stage { position: relative; display: inline-block; line-height: 0; box-shadow: 0 8px 40px rgba(0,0,0,0.5); }
+  .stage[hidden] { display: none; }
+  canvas#out { display: block; max-width: 100%; max-height: calc(100vh - 100px); background: #fff; }
   canvas#out.alpha {
     background-color: #d9d9d9;
     background-image:
@@ -35,6 +37,11 @@
     background-size: 20px 20px;
     background-position: 0 0, 10px 10px;
   }
+  canvas#warpOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; touch-action: none; display: none; }
+  canvas#warpOverlay.on { display: block; pointer-events: auto; }
+  canvas#warpOverlay.on { cursor: crosshair; }
+  canvas#camView { position: absolute; right: 14px; bottom: 14px; width: 220px; height: 165px; border-radius: 10px; border: 2px solid var(--accent); box-shadow: 0 6px 24px rgba(0,0,0,0.35); background: #04121f; display: none; z-index: 5; }
+  .cam-status { font-size: 11px; color: var(--accent-ink); margin-top: 6px; line-height: 1.5; min-height: 1em; }
   .group { margin-bottom: 18px; }
   .group h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-mute); margin: 0 0 8px; font-weight: 600; }
   .row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
@@ -86,6 +93,19 @@
   .chain-item.drop-below { box-shadow: 0 3px 0 0 var(--accent); }
   .combo-row { display: flex; flex-wrap: wrap; gap: 4px; }
   .combo-row button { font-size: 11px; padding: 4px 8px; }
+  /* ── 모바일: 세로 스택 + 프리뷰 상단 고정 ── */
+  @media (max-width: 760px) {
+    main { display: flex; flex-direction: column; }
+    header { padding: 10px 14px; gap: 8px; }
+    header h1 { font-size: 13px; }
+    header .sub { display: none; }
+    section.preview { order: -1; min-height: 46vh; padding: 12px; position: sticky; top: 0; z-index: 3; }
+    canvas#out { max-height: 46vh; }
+    aside.panel { border-right: none; border-top: 1px solid var(--line); overflow: visible; }
+    canvas#camView { width: 148px; height: 111px; right: 8px; bottom: 8px; }
+    .mode-btn .d { display: none; }
+    .row label { flex-basis: 72px; }
+  }
 </style>
 </head>
 <body>
@@ -121,6 +141,65 @@
       <div class="group">
         <h2 id="paramTitle">설정</h2>
         <div id="params"></div>
+      </div>
+
+      <div class="group">
+        <h2>점토 변형 <span style="font-weight:400;color:var(--ink-mute);text-transform:none;letter-spacing:0">土</span></h2>
+        <div class="row">
+          <label class="toggle"><input type="checkbox" id="warpOn" /> 변형 켜기</label>
+        </div>
+        <div id="warpOpts" hidden>
+          <div class="mode-grid" style="grid-template-columns:repeat(2,1fr);margin:8px 0">
+            <button class="mode-btn" id="warpPull" data-tool="pull"><div class="t">당기기</div><div class="d">잡아서 끌어온 만큼</div></button>
+            <button class="mode-btn" id="warpBrush" data-tool="brush"><div class="t">문지르기</div><div class="d">뭉개듯 쓸어 밀기</div></button>
+          </div>
+          <div class="row">
+            <label>격자 밀도</label>
+            <select id="warpDensity">
+              <option value="3">3 × 3</option>
+              <option value="4">4 × 4</option>
+              <option value="6">6 × 6</option>
+              <option value="8" selected>8 × 8</option>
+              <option value="12">12 × 12</option>
+              <option value="16">16 × 16 (섬세)</option>
+            </select>
+          </div>
+          <div id="pullRows">
+            <div class="row">
+              <label>당기기 반경</label>
+              <input type="range" id="warpRadius" min="0.1" max="0.9" step="0.05" value="0.45" />
+              <span class="val" id="warpRadiusVal">0.45</span>
+            </div>
+            <div class="row">
+              <label>당기기 세기</label>
+              <input type="range" id="warpPullStr" min="0.2" max="2" step="0.1" value="1" />
+              <span class="val" id="warpPullStrVal">1.0</span>
+            </div>
+          </div>
+          <div id="brushRows" hidden>
+            <div class="row">
+              <label>브러시 크기</label>
+              <input type="range" id="warpBrushSize" min="0.05" max="0.5" step="0.01" value="0.2" />
+              <span class="val" id="warpBrushSizeVal">0.20</span>
+            </div>
+            <div class="row">
+              <label>세기</label>
+              <input type="range" id="warpStrength" min="0.1" max="1" step="0.05" value="0.6" />
+              <span class="val" id="warpStrengthVal">0.60</span>
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <label class="toggle"><input type="checkbox" id="warpGridShow" checked /> 격자 보이기</label>
+          </div>
+          <div class="footer-actions">
+            <button id="warpReset" style="flex:1">변형 초기화</button>
+          </div>
+          <div class="footer-actions">
+            <button id="warpCam" style="flex:1">🖐 카메라로 조작</button>
+          </div>
+          <div class="cam-status" id="camStatus"></div>
+          <div class="hint" id="warpHint">캔버스 위 <b>조절점을 끌어</b> 형태·비율을 눌러 늘리기. 저장·PDF에도 그대로 반영됩니다.</div>
+        </div>
       </div>
 
       <div class="group">
@@ -163,7 +242,12 @@
 
     <section class="preview">
       <div class="empty-msg" id="empty">사진을 올리면 시작합니다<br/>드래그하거나 클립보드에서 ⌘V</div>
-      <canvas id="out" hidden></canvas>
+      <div class="stage" id="stage" hidden>
+        <canvas id="out"></canvas>
+        <canvas id="warpOverlay"></canvas>
+      </div>
+      <video id="camVideo" playsinline muted style="display:none"></video>
+      <canvas id="camView" width="220" height="165"></canvas>
     </section>
   </main>
 
@@ -171,7 +255,22 @@
 const $ = s => document.querySelector(s);
 const out = $('#out');
 const octx = out.getContext('2d');
+const overlay = $('#warpOverlay');
+const ovx = overlay.getContext('2d');
 let img = null;
+
+/* ---------- 점토 변형(메시 워프) 상태 ---------- */
+// 그리드 모드와 브러시 모드가 같은 조절점 메시(pts)를 공유한다.
+// 그리드 = 가장 가까운 점 하나를 끌기 / 브러시 = 반경 안 모든 점을 falloff로 밀기.
+const warp = {
+  on: false, tool: 'pull', cols: 8, rows: 8,
+  radius: 0.45, pull: 1.0,           // 끌기: 영향 반경(짧은변 비율) · 세기(1=커서에 정확히 따라옴)
+  brush: 0.2, strength: 0.6,         // 밀기 브러시
+  showGrid: true, camCursor: null,
+  pts: null, W: 0, H: 0, gc: 0, gr: 0,
+};
+let reduced = null, reducedW = 0, reducedH = 0;   // 체인까지 끝난(워프 전) 캔버스 캐시
+let warpRAF = 0;
 
 /* ---------- 체인 상태 ---------- */
 let chain = [];        // { id, type, params, on }
@@ -959,6 +1058,339 @@ const EFFECTS = {
   },
 };
 
+/* ---------- 점토 변형: 메시 워프 엔진 ---------- */
+function buildGrid(W, H) {
+  const cols = warp.cols, rows = warp.rows;
+  const pts = [];
+  for (let r = 0; r <= rows; r++) {
+    const row = [];
+    for (let c = 0; c <= cols; c++) {
+      const x = c / cols * W, y = r / rows * H;
+      row.push({ ox: x, oy: y, x, y });   // ox,oy = 원래(정지) 위치 · x,y = 현재
+    }
+    pts.push(row);
+  }
+  warp.pts = pts; warp.W = W; warp.H = H; warp.gc = cols; warp.gr = rows;
+}
+// 이미지/출력 크기·격자 밀도가 바뀌면 격자 재생성(변형 리셋)
+function ensureGrid(W, H) {
+  if (!warp.pts || warp.W !== W || warp.H !== H || warp.gc !== warp.cols || warp.gr !== warp.rows)
+    buildGrid(W, H);
+}
+function resetGrid() {
+  if (!warp.pts) return;
+  for (const row of warp.pts) for (const p of row) { p.x = p.ox; p.y = p.oy; }
+}
+
+// src 삼각형(u,v) → dst 삼각형(x,y) 아핀 매핑으로 그리기
+function drawTri(ctx, img, u0, v0, u1, v1, u2, v2, x0, y0, x1, y1, x2, y2) {
+  // 이음새 방지: dst 삼각형을 무게중심 기준 약간 부풀려 클립
+  const gx = (x0 + x1 + x2) / 3, gy = (y0 + y1 + y2) / 3, pad = 0.6;
+  const ex = (x, y) => { const dx = x - gx, dy = y - gy, l = Math.hypot(dx, dy) || 1; return [x + dx / l * pad, y + dy / l * pad]; };
+  const [X0, Y0] = ex(x0, y0), [X1, Y1] = ex(x1, y1), [X2, Y2] = ex(x2, y2);
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(X0, Y0); ctx.lineTo(X1, Y1); ctx.lineTo(X2, Y2); ctx.closePath(); ctx.clip();
+  const den = u0 * (v1 - v2) - u1 * (v0 - v2) + u2 * (v0 - v1);
+  if (Math.abs(den) < 1e-6) { ctx.restore(); return; }
+  const a = (x0 * (v1 - v2) - x1 * (v0 - v2) + x2 * (v0 - v1)) / den;
+  const b = (y0 * (v1 - v2) - y1 * (v0 - v2) + y2 * (v0 - v1)) / den;
+  const c = (u0 * (x1 - x2) - u1 * (x0 - x2) + u2 * (x0 - x1)) / den;
+  const d = (u0 * (y1 - y2) - u1 * (y0 - y2) + u2 * (y0 - y1)) / den;
+  const e = (u0 * (v1 * x2 - v2 * x1) - u1 * (v0 * x2 - v2 * x0) + u2 * (v0 * x1 - v1 * x0)) / den;
+  const f = (u0 * (v1 * y2 - v2 * y1) - u1 * (v0 * y2 - v2 * y0) + u2 * (v0 * y1 - v1 * y0)) / den;
+  ctx.setTransform(a, b, c, d, e, f);
+  ctx.drawImage(img, 0, 0);
+  ctx.restore();
+}
+function applyWarp(srcCanvas, W, H) {
+  const dst = mk(W, H), dc = dst.getContext('2d');
+  const pts = warp.pts;
+  for (let r = 0; r < warp.rows; r++) {
+    for (let c = 0; c < warp.cols; c++) {
+      const TL = pts[r][c], TR = pts[r][c + 1], BL = pts[r + 1][c], BR = pts[r + 1][c + 1];
+      drawTri(dc, srcCanvas, TL.ox, TL.oy, TR.ox, TR.oy, BL.ox, BL.oy, TL.x, TL.y, TR.x, TR.y, BL.x, BL.y);
+      drawTri(dc, srcCanvas, TR.ox, TR.oy, BR.ox, BR.oy, BL.ox, BL.oy, TR.x, TR.y, BR.x, BR.y, BL.x, BL.y);
+    }
+  }
+  return dst;
+}
+
+/* ---------- 오버레이(조절점·격자·브러시) ---------- */
+function positionOverlay() {
+  overlay.width = warp.W; overlay.height = warp.H;   // 내부 해상도 = out과 동일 → 1:1 좌표
+}
+// Catmull-Rom 스플라인: 점들을 부드러운 곡선으로 연결(각지지 않게 → 크롬 튜브 느낌)
+function strokeSpline(ctx, ps) {
+  if (ps.length < 2) return;
+  ctx.moveTo(ps[0].x, ps[0].y);
+  for (let i = 0; i < ps.length - 1; i++) {
+    const p0 = ps[i - 1] || ps[i], p1 = ps[i], p2 = ps[i + 1], p3 = ps[i + 2] || ps[i + 1];
+    ctx.bezierCurveTo(p1.x + (p2.x - p0.x) / 6, p1.y + (p2.y - p0.y) / 6,
+                      p2.x - (p3.x - p1.x) / 6, p2.y - (p3.y - p1.y) / 6, p2.x, p2.y);
+  }
+}
+function drawOverlay(brushAt) {
+  ovx.clearRect(0, 0, overlay.width, overlay.height);
+  if (!warp.on || !warp.pts) return;
+  const s = warp.W / (overlay.getBoundingClientRect().width || warp.W); // 화면px→캔버스px
+  if (warp.showGrid) {
+    const pts = warp.pts;
+    ovx.lineJoin = 'round'; ovx.lineCap = 'round';
+    // 스플라인으로 가로줄·세로줄을 부드러운 곡선으로
+    ovx.lineWidth = 2.6 * s; ovx.strokeStyle = 'rgba(43,183,238,0.82)';
+    ovx.beginPath();
+    for (let r = 0; r <= warp.rows; r++) strokeSpline(ovx, pts[r]);
+    for (let c = 0; c <= warp.cols; c++) { const col = []; for (let r = 0; r <= warp.rows; r++) col.push(pts[r][c]); strokeSpline(ovx, col); }
+    ovx.stroke();
+    // 교점 사각형 마커
+    const ms = 2.6 * s;
+    ovx.fillStyle = '#ffffff'; ovx.strokeStyle = 'rgba(14,134,189,0.9)'; ovx.lineWidth = 1 * s;
+    for (let r = 0; r <= warp.rows; r++) for (let c = 0; c <= warp.cols; c++) {
+      const p = pts[r][c]; ovx.fillRect(p.x - ms, p.y - ms, ms * 2, ms * 2); ovx.strokeRect(p.x - ms, p.y - ms, ms * 2, ms * 2);
+    }
+  }
+  // 영향권 원(자석 반경 / 브러시 크기)
+  if (brushAt) {
+    const rad = (warp.tool === 'pull' ? warp.radius : warp.brush) * Math.min(warp.W, warp.H);
+    ovx.beginPath(); ovx.arc(brushAt.x, brushAt.y, rad, 0, Math.PI * 2);
+    ovx.lineWidth = 1.5 * s; ovx.strokeStyle = 'rgba(14,134,189,0.85)'; ovx.setLineDash([6 * s, 5 * s]); ovx.stroke(); ovx.setLineDash([]);
+  }
+  // 카메라(손) 가상 커서 — 손 모양별 도형으로 영향 범위 표시(손바닥●/집게▲/주먹■)
+  if (warp.camCursor) {
+    const cc = warp.camCursor;
+    const rad = (warp.tool === 'pull' ? warp.radius : warp.brush) * Math.min(warp.W, warp.H);
+    const grab = camera.grabbing;
+    ovx.lineWidth = 3 * s;
+    ovx.strokeStyle = grab ? '#ff5a36' : '#0e86bd';
+    ovx.fillStyle = grab ? 'rgba(255,90,54,0.14)' : 'rgba(43,183,238,0.10)';
+    ovx.beginPath();
+    if (camera.kind === 'fist') {
+      ovx.rect(cc.x - rad, cc.y - rad, rad * 2, rad * 2);
+    } else if (camera.kind === 'pincer') {
+      ovx.moveTo(cc.x, cc.y - rad); ovx.lineTo(cc.x - rad * 0.87, cc.y + rad * 0.5); ovx.lineTo(cc.x + rad * 0.87, cc.y + rad * 0.5); ovx.closePath();
+    } else {
+      ovx.arc(cc.x, cc.y, rad, 0, Math.PI * 2);
+    }
+    ovx.fill(); ovx.stroke();
+    ovx.beginPath(); ovx.arc(cc.x, cc.y, 3 * s, 0, Math.PI * 2); ovx.fillStyle = grab ? '#ff5a36' : '#0e86bd'; ovx.fill();
+  }
+}
+
+// 워프만 다시 그리기(체인 재계산 없이) — 드래그 중 사용
+function renderWarpOnly(brushAt) {
+  if (!reduced || !warp.on) return;
+  const W = reducedW, H = reducedH;
+  ensureGrid(W, H); positionOverlay();
+  const composited = applyWarp(reduced, W, H);
+  out.width = W; out.height = H; octx.clearRect(0, 0, W, H); octx.drawImage(composited, 0, 0);
+  if (alphaOn()) { knockout(octx, W, H, alphaColorVal(), alphaTolVal()); out.classList.add('alpha'); }
+  else out.classList.remove('alpha');
+  drawOverlay(brushAt);
+}
+function scheduleWarp(brushAt) {
+  if (warpRAF) return;
+  warpRAF = requestAnimationFrame(() => { warpRAF = 0; renderWarpOnly(brushAt); });
+}
+
+/* ---------- 오버레이 포인터: 그리드 끌기 / 브러시 밀기 ---------- */
+let dragging = false, grabbed = null, lastPt = null;
+function evtToCanvas(e) {
+  const r = overlay.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * warp.W, y: (e.clientY - r.top) / r.height * warp.H };
+}
+function nearestPoint(pt, thr) {
+  let best = null, bd = thr * thr;
+  for (const row of warp.pts) for (const p of row) {
+    const d = (p.x - pt.x) ** 2 + (p.y - pt.y) ** 2;
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best;
+}
+function smoothstep(t) { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); }
+function brushPush(center, dx, dy) {
+  const radius = warp.brush * Math.min(warp.W, warp.H);
+  for (const row of warp.pts) for (const p of row) {
+    const d = Math.hypot(p.x - center.x, p.y - center.y);
+    if (d > radius) continue;
+    const w = smoothstep(1 - d / radius) * warp.strength;
+    p.x += dx * w; p.y += dy * w;
+  }
+}
+// 끌기: 누른 지점 반경 안 노드를 그때 위치에 고정해두고, 드래그 벡터 × falloff 만큼 이동
+// 중심(w=1)은 커서에 정확히 붙어 따라오고, 주변은 비례해서 끌려옴 → 누적(가역=변형 초기화/끄기)
+let grabNodes = null, grabAnchor = null;
+function buildGrab(anchor) {
+  const R = warp.radius * Math.min(warp.W, warp.H);
+  grabAnchor = anchor; grabNodes = [];
+  for (const row of warp.pts) for (const p of row) {
+    const d = Math.hypot(p.x - anchor.x, p.y - anchor.y);
+    if (d < R) grabNodes.push({ p, gx: p.x, gy: p.y, w: smoothstep(1 - d / R) });
+  }
+}
+function applyPull(cur) {
+  if (!grabNodes || !grabAnchor) return;
+  const dx = (cur.x - grabAnchor.x) * warp.pull, dy = (cur.y - grabAnchor.y) * warp.pull;
+  for (const g of grabNodes) { g.p.x = g.gx + dx * g.w; g.p.y = g.gy + dy * g.w; }
+}
+
+overlay.addEventListener('pointerdown', e => {
+  if (!warp.on || !warp.pts) return;
+  e.preventDefault();
+  overlay.setPointerCapture(e.pointerId);
+  const pt = evtToCanvas(e); lastPt = pt; dragging = true;
+  if (warp.tool === 'pull') buildGrab(pt);   // 그 자리를 잡음
+  scheduleWarp(pt);
+});
+overlay.addEventListener('pointermove', e => {
+  if (!warp.on || !warp.pts) return;
+  const pt = evtToCanvas(e);
+  if (!dragging) { drawOverlay(pt); return; }
+  if (warp.tool === 'pull') applyPull(pt);
+  else brushPush(pt, pt.x - lastPt.x, pt.y - lastPt.y);
+  lastPt = pt; scheduleWarp(pt);
+});
+function endDrag() { dragging = false; grabNodes = null; grabAnchor = null; }
+overlay.addEventListener('pointerup', endDrag);
+overlay.addEventListener('pointercancel', endDrag);
+overlay.addEventListener('pointerleave', () => { if (!dragging) drawOverlay(null); });
+
+/* ---------- 카메라 손 조작 (MediaPipe Hands · 모기잡기 핀치 이식) ---------- */
+// 모델·WASM은 카메라를 켤 때만 CDN에서 로드 → 기본 툴은 오프라인 단일 파일 유지
+const camera = { on: false, loading: false, video: null, landmarker: null, hand: null, raf: 0, lastT: -1,
+  kind: null, grabbing: false, prevGrab: false, prevCursor: null,
+  smoothX: null, smoothY: null, prevRawX: null, prevRawY: null };
+const HAND_CONN = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+function setCamStatus(msg) { $('#camStatus').textContent = msg; }
+
+// 손가락 폄 판정 (손목→끝 거리 > 손목→관절 거리 × 임계) — idea-orchestrator 이식
+function isExtended(lm, tip, mcp, th = 1.3) {
+  const w = lm[0];
+  return Math.hypot(lm[tip].x - w.x, lm[tip].y - w.y) > Math.hypot(lm[mcp].x - w.x, lm[mcp].y - w.y) * th;
+}
+// 3분류: 손바닥(펴짐=원/hover) · 집게(검지만=세모) · 주먹(다 접힘=네모/grab)
+function classifyHand(lm) {
+  const ix = isExtended(lm, 8, 5), mi = isExtended(lm, 12, 9), ri = isExtended(lm, 16, 13), pi = isExtended(lm, 20, 17);
+  const curled = (mi ? 0 : 1) + (ri ? 0 : 1) + (pi ? 0 : 1);
+  if (!ix && curled >= 2) return 'fist';
+  if (ix && curled >= 2) return 'pincer';
+  if (mi && ri && pi) return 'palm';
+  return ix ? 'pincer' : 'palm';
+}
+// 손 → {분류, 커서(캔버스좌표·미러), 잡기여부}
+function readHand(lm) {
+  if (!lm || lm.length < 21 || !warp.W) return null;
+  const kind = classifyHand(lm);
+  const handSize = Math.hypot(lm[9].x - lm[0].x, lm[9].y - lm[0].y) || 0.1;
+  const pinchRatio = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) / handSize;
+  // 집게는 검지끝, 손바닥·주먹은 손바닥 중심을 커서로
+  let px, py;
+  if (kind === 'pincer') { px = lm[8].x; py = lm[8].y; }
+  else { px = (lm[0].x + lm[5].x + lm[9].x + lm[13].x + lm[17].x) / 5; py = (lm[0].y + lm[5].y + lm[9].y + lm[13].y + lm[17].y) / 5; }
+  const isGrab = kind === 'fist' || (kind === 'pincer' && pinchRatio < 0.55);
+  return { kind, cursor: { x: (1 - px) * warp.W, y: py * warp.H }, isGrab };
+}
+
+function drawCamPreview() {
+  const cv = $('#camView'), cx = cv.getContext('2d'), w = cv.width, h = cv.height;
+  cx.save(); cx.clearRect(0, 0, w, h);
+  cx.translate(w, 0); cx.scale(-1, 1);                 // 거울 모드로 영상
+  if (camera.video && camera.video.readyState >= 2) cx.drawImage(camera.video, 0, 0, w, h);
+  cx.restore();
+  const hand = camera.hand;
+  if (hand) {
+    const px = lm => (1 - lm.x) * w, py = lm => lm.y * h;
+    cx.strokeStyle = 'rgba(43,183,238,0.9)'; cx.lineWidth = 2; cx.beginPath();
+    for (const [a, b] of HAND_CONN) { cx.moveTo(px(hand[a]), py(hand[a])); cx.lineTo(px(hand[b]), py(hand[b])); }
+    cx.stroke();
+    cx.fillStyle = '#fff';
+    for (const lm of hand) { cx.beginPath(); cx.arc(px(lm), py(lm), 2.5, 0, Math.PI * 2); cx.fill(); }
+    cx.beginPath(); cx.moveTo(px(hand[4]), py(hand[4])); cx.lineTo(px(hand[8]), py(hand[8]));
+    cx.lineWidth = 3; cx.strokeStyle = camera.grabbing ? '#ff5a36' : '#2f9e44'; cx.stroke();
+  }
+  // 인식된 손 모양 라벨
+  const label = camera.kind === 'fist' ? '주먹 ■ 잡기' : camera.kind === 'pincer' ? '집게 ▲' : camera.kind === 'palm' ? '손바닥 ●' : '';
+  if (label) { cx.font = '600 12px Pretendard, system-ui'; cx.fillStyle = camera.grabbing ? '#ff5a36' : '#bfe6f3'; cx.fillText(label, 8, 16); }
+}
+
+function camLoop(t) {
+  if (!camera.on) return;
+  if (camera.video.readyState >= 2 && t !== camera.lastT) {
+    try { const res = camera.landmarker.detectForVideo(camera.video, t); camera.hand = (res && res.landmarks && res.landmarks[0]) || null; }
+    catch (e) { /* 프레임 스킵 */ }
+    camera.lastT = t;
+  }
+  const g = camera.hand ? readHand(camera.hand) : null;
+  camera.kind = g ? g.kind : null;
+  camera.grabbing = !!(g && g.isGrab);
+  drawCamPreview();
+  if (g && warp.on && warp.pts) {
+    // 적응형 스무딩 — 정지 시 강하게, 움직일 때 약하게(지터 억제)
+    const raw = g.cursor;
+    const speed = camera.prevRawX == null ? 0 : Math.hypot(raw.x - camera.prevRawX, raw.y - camera.prevRawY);
+    camera.prevRawX = raw.x; camera.prevRawY = raw.y;
+    const a = Math.min(0.7, 0.15 + speed * 0.02);
+    camera.smoothX = camera.smoothX == null ? raw.x : camera.smoothX * (1 - a) + raw.x * a;
+    camera.smoothY = camera.smoothY == null ? raw.y : camera.smoothY * (1 - a) + raw.y * a;
+    const cur = { x: camera.smoothX, y: camera.smoothY };
+    warp.camCursor = cur;
+    if (warp.tool === 'pull') {
+      if (g.isGrab && !camera.prevGrab) buildGrab(cur);           // 주먹 쥐면 그 자리 잡기
+      if (g.isGrab) { applyPull(cur); renderWarpOnly(cur); }      // 쥔 채 이동 = 당기기
+      else { grabNodes = null; grabAnchor = null; drawOverlay(cur); }   // 손 펴면 놓기(hover)
+    } else {
+      if (g.isGrab) {
+        if (camera.prevCursor) brushPush(cur, cur.x - camera.prevCursor.x, cur.y - camera.prevCursor.y);
+        camera.prevCursor = cur; renderWarpOnly(cur);
+      } else { camera.prevCursor = null; drawOverlay(cur); }
+    }
+    camera.prevGrab = g.isGrab;
+  } else {
+    warp.camCursor = null; camera.prevGrab = false; camera.prevCursor = null; camera.smoothX = camera.smoothY = camera.prevRawX = camera.prevRawY = null;
+    if (warp.on) drawOverlay(null);
+  }
+  camera.raf = requestAnimationFrame(camLoop);
+}
+
+async function startCamera() {
+  if (camera.on || camera.loading) return;
+  camera.loading = true; setCamStatus('모델 불러오는 중… (첫 실행은 몇 초)');
+  try {
+    const mod = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/vision_bundle.mjs');
+    const vision = await mod.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm');
+    camera.landmarker = await mod.HandLandmarker.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate: 'GPU' },
+      runningMode: 'VIDEO', numHands: 1,
+      minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+    });
+    setCamStatus('카메라 켜는 중…');
+    camera.video = $('#camVideo');
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }, audio: false });
+    camera.video.srcObject = stream;
+    await new Promise(r => { camera.video.onloadedmetadata = r; });
+    await camera.video.play();
+  } catch (e) {
+    setCamStatus('실패: ' + (e.message || e) + ' — 카메라 권한·https(또는 배포본)에서 열어주세요');
+    camera.loading = false; return;
+  }
+  camera.on = true; camera.loading = false;
+  $('#camView').style.display = 'block';
+  $('#warpCam').classList.add('sel'); $('#warpCam').textContent = '🖐 카메라 끄기';
+  setCamStatus('손바닥 펴서 조준 ● · 주먹 쥐면 잡기 ■ · 펴면 놓기');
+  camera.lastT = -1;
+  camera.raf = requestAnimationFrame(camLoop);
+}
+function stopCamera() {
+  if (camera.raf) cancelAnimationFrame(camera.raf);
+  camera.on = false; camera.hand = null; camera.kind = null; camera.grabbing = false; camera.prevGrab = false; camera.prevCursor = null;
+  camera.smoothX = camera.smoothY = camera.prevRawX = camera.prevRawY = null;
+  if (camera.video && camera.video.srcObject) { camera.video.srcObject.getTracks().forEach(tr => tr.stop()); camera.video.srcObject = null; }
+  $('#camView').style.display = 'none';
+  $('#warpCam').classList.remove('sel'); $('#warpCam').textContent = '🖐 카메라로 조작';
+  setCamStatus('');
+  warp.camCursor = null;
+  if (warp.on) drawOverlay(null);
+}
+
 /* ---------- 렌더 (체인 파이프라인) ---------- */
 function render() {
   if (!img) return;
@@ -974,14 +1406,18 @@ function render() {
     EFFECTS[step.type](cur, step.params, next.getContext('2d', { willReadFrequently: true }));
     cur = next;
   }
+  reduced = cur; reducedW = W; reducedH = H;   // 워프 전 결과 캐시(드래그 중 재사용)
+  let composited = cur;
+  if (warp.on) { ensureGrid(W, H); positionOverlay(); composited = applyWarp(cur, W, H); }
   out.width = W; out.height = H;
-  octx.drawImage(cur, 0, 0);
+  octx.drawImage(composited, 0, 0);
   if (alphaOn()) {
     knockout(octx, W, H, alphaColorVal(), alphaTolVal());
     out.classList.add('alpha');
   } else {
     out.classList.remove('alpha');
   }
+  if (warp.on) drawOverlay();
 }
 
 /* ---------- 종이 → 투명 (색 녹아웃) ---------- */
@@ -1069,7 +1505,7 @@ function loadFile(file) {
   im.onload = () => {
     img = im;
     $('#empty').hidden = true;
-    out.hidden = false;
+    $('#stage').hidden = false;
     $('#filename').textContent = `${file.name || '클립보드 이미지'} · ${im.width}×${im.height}`;
     render();
     URL.revokeObjectURL(url);
@@ -1156,6 +1592,36 @@ $('#alphaPick').onclick = () => { $('#alphaColor').value = detectPaper(); alphaT
 $('#alphaTol').oninput = () => { $('#alphaTolVal').textContent = $('#alphaTol').value; render(); };
 
 $('#maxw').onchange = render;
+
+/* ---------- 점토 변형 컨트롤 ---------- */
+function syncWarpTool() {
+  const t = warp.tool;
+  $('#warpPull').classList.toggle('sel', t === 'pull');
+  $('#warpBrush').classList.toggle('sel', t === 'brush');
+  $('#pullRows').hidden = t !== 'pull';
+  $('#brushRows').hidden = t !== 'brush';
+  $('#warpHint').innerHTML = t === 'pull'
+    ? '화면을 <b>잡고 당기면</b> 끌어온 만큼 격자·이미지가 딸려옵니다. 반경 안이 함께 끌려와요.'
+    : '화면을 <b>문지르면</b> 점토처럼 뭉개집니다. 밀도를 높이면 더 매끈해요.';
+}
+$('#warpOn').onchange = e => {
+  warp.on = e.target.checked;
+  $('#warpOpts').hidden = !warp.on;
+  overlay.classList.toggle('on', warp.on);
+  if (!warp.on && camera.on) stopCamera();
+  render();
+};
+$('#warpCam').onclick = () => { camera.on ? stopCamera() : startCamera(); };
+$('#warpPull').onclick = () => { warp.tool = 'pull'; syncWarpTool(); drawOverlay(null); };
+$('#warpBrush').onclick = () => { warp.tool = 'brush'; syncWarpTool(); drawOverlay(null); };
+$('#warpDensity').onchange = e => { warp.cols = warp.rows = +e.target.value; render(); };
+$('#warpRadius').oninput = e => { warp.radius = +e.target.value; $('#warpRadiusVal').textContent = (+e.target.value).toFixed(2); };
+$('#warpPullStr').oninput = e => { warp.pull = +e.target.value; $('#warpPullStrVal').textContent = (+e.target.value).toFixed(1); };
+$('#warpBrushSize').oninput = e => { warp.brush = +e.target.value; $('#warpBrushSizeVal').textContent = (+e.target.value).toFixed(2); };
+$('#warpStrength').oninput = e => { warp.strength = +e.target.value; $('#warpStrengthVal').textContent = (+e.target.value).toFixed(2); };
+$('#warpGridShow').onchange = e => { warp.showGrid = e.target.checked; scheduleWarp(null); };
+$('#warpReset').onclick = () => { resetGrid(); renderWarpOnly(null); };
+syncWarpTool();
 
 buildModeGrid();
 buildChain();
