@@ -236,7 +236,7 @@
         <div class="footer-actions">
           <button class="primary" id="savePdf" style="flex:1">PDF 내보내기</button>
         </div>
-        <div class="hint" id="pdfHint" style="margin-top:6px">PDF · 현재 화면을 <b>한 장짜리 인쇄용 PDF</b>로. 투명 영역은 흰 종이로 깔리고 150dpi로 나갑니다. 표지·출력용.</div>
+        <div class="hint" id="pdfHint" style="margin-top:6px">PDF · 현재 화면을 <b>한 장짜리 인쇄용 PDF</b>로. 투명 영역은 흰 종이로 깔리고 300dpi로 나갑니다. 표지·출력용.</div>
       </div>
     </aside>
 
@@ -1521,7 +1521,7 @@ function savePdf() {
   fc.drawImage(out, 0, 0);
   const durl = flat.toDataURL('image/jpeg', 0.92);
   const jpg = strBytes(atob(durl.split(',')[1]));
-  const pdf = buildPdf(jpg, W, H, 150);
+  const pdf = buildPdf(jpg, W, H, 300);
   const name = chain.filter(s => s.on).map(s => s.type).join('-') || 'original';
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
